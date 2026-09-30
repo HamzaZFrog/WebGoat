@@ -11,6 +11,32 @@ on:
             - main
 
 jobs:
+    scan-repository:
+        name: Frogbot scan-repository
+        runs-on: ubuntu-latest
+        permissions:
+            pull-requests: write
+            contents: write
+            security-events: write
+        steps:
+            -   name: Checkout git repository
+                uses: actions/checkout@v7
+            -   name: Install Frogbot
+                run: |
+                    curl -fsSL -o "$RUNNER_TEMP/frogbot" "https://releases.jfrog.io/artifactory/frogbot/v3/3.7.0/frogbot-linux-amd64/frogbot"
+                    chmod +x "$RUNNER_TEMP/frogbot"
+                    echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+            -   name: Scan repository
+                env:
+                    JF_URL: ${{ secrets.FROGBOT_URL }}
+                    JF_ACCESS_TOKEN: ${{ secrets.FROGBOT_ACCESS_TOKEN }}
+                    JF_GIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    JF_GIT_PROVIDER: github
+                    JF_GIT_OWNER: ${{ github.repository_owner }}
+                    JF_GIT_REPO: ${{ github.event.repository.name }}
+                    JF_GIT_BASE_BRANCH: ${{ github.head_ref || github.ref_name }}
+                    JF_PROJECT_KEY: wbg
+                run: frogbot scan-repository
     pre-commit:
         name: Pre-commit check
         runs-on: ubuntu-latest
@@ -32,16 +58,49 @@ jobs:
                 if: always()
     build:
         runs-on: ${{ matrix.os }}
-        needs: [ pre-commit ]
+        needs: [ scan-repository, pre-commit ]
         strategy:
             fail-fast: true
             matrix:
                 os: [ windows-latest, ubuntu-latest, macos-15-intel ]
+        env:
+            JFROG_CLI_BUILD_NAME: webgoat
+            JFROG_CLI_BUILD_NUMBER: ${{ github.run_id }}.${{ github.run_attempt }}
         steps:
             -   uses: actions/checkout@v7
             -   name: Set up JDK
                 uses: ./.github/actions/java-setup
                 with:
                     cache: 'maven'
+            -   name: Setup JFrog CLI
+                if: runner.os == 'Linux'
+                uses: jfrog/setup-jfrog-cli@v4
+                env:
+                    JF_URL: ${{ secrets.FROGBOT_URL }}
+                    JF_ACCESS_TOKEN: ${{ secrets.FROGBOT_ACCESS_TOKEN }}
+                    JF_PROJECT: wbg
+                with:
+                    disable-auto-build-publish: true
+            -   name: Configure Maven repositories
+                if: runner.os == 'Linux'
+                run: |
+                    jf mvn-config \
+                      --repo-resolve-releases wbg-maven-remote \
+                      --repo-resolve-snapshots wbg-maven-remote \
+                      --repo-deploy-releases wbg-maven-local \
+                      --repo-deploy-snapshots wbg-maven-local
             -   name: Build with Maven
+                if: runner.os != 'Linux'
                 run: mvn --no-transfer-progress verify
+            -   name: Build with Maven and collect build info
+                if: runner.os == 'Linux'
+                run: jf mvn --no-transfer-progress verify
+            -   name: Publish build info
+                if: runner.os == 'Linux'
+                run: |
+                    jf rt build-collect-env
+                    jf rt build-add-git
+                    jf rt build-publish
+            -   name: Scan build info with Xray
+                if: runner.os == 'Linux'
+                run: jf build-scan
