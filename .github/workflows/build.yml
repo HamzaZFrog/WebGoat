@@ -65,7 +65,7 @@ jobs:
                 os: [ windows-latest, ubuntu-latest, macos-15-intel ]
         env:
             JFROG_CLI_BUILD_NAME: webgoat
-            JFROG_CLI_BUILD_NUMBER: ${{ github.run_id }}.${{ github.run_attempt }}-${{ matrix.os }}
+            JFROG_CLI_BUILD_NUMBER: ${{ github.run_id }}.${{ github.run_attempt }}
         steps:
             -   uses: actions/checkout@v7
             -   name: Set up JDK
@@ -80,7 +80,15 @@ jobs:
                     JF_PROJECT: wbg
                 with:
                     disable-auto-build-publish: true
-            -   name: Configure Maven repositories
+            -   name: Configure Maven resolution
+                if: matrix.os != 'ubuntu-latest'
+                shell: bash
+                run: |
+                    jf mvn-config \
+                      --repo-resolve-releases wbg-maven-remote \
+                      --repo-resolve-snapshots wbg-maven-remote
+            -   name: Configure Maven resolution and deployment
+                if: matrix.os == 'ubuntu-latest'
                 shell: bash
                 run: |
                     jf mvn-config \
@@ -88,15 +96,22 @@ jobs:
                       --repo-resolve-snapshots wbg-maven-remote \
                       --repo-deploy-releases wbg-maven-local \
                       --repo-deploy-snapshots wbg-maven-local
-            -   name: Build with Maven and collect build info
+            -   name: Verify on this OS
+                if: matrix.os != 'ubuntu-latest'
                 shell: bash
                 run: jf mvn --no-transfer-progress verify
+            -   name: Build, test, and publish Maven artifacts
+                if: matrix.os == 'ubuntu-latest'
+                shell: bash
+                run: jf mvn --no-transfer-progress install
             -   name: Publish build info
+                if: matrix.os == 'ubuntu-latest'
                 shell: bash
                 run: |
                     jf rt build-collect-env
                     jf rt build-add-git
                     jf rt build-publish
             -   name: Scan build info with Xray
+                if: matrix.os == 'ubuntu-latest'
                 shell: bash
                 run: jf build-scan
