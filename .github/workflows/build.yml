@@ -65,7 +65,7 @@ jobs:
                 os: [ windows-latest, ubuntu-latest, macos-15-intel ]
         env:
             JFROG_CLI_BUILD_NAME: webgoat
-            JFROG_CLI_BUILD_NUMBER: ${{ github.run_id }}.${{ github.run_attempt }}
+            JFROG_CLI_BUILD_NUMBER: ${{ github.run_id }}.${{ github.run_attempt }}-${{ runner.os }}
         steps:
             -   uses: actions/checkout@v7
             -   name: Set up JDK
@@ -73,7 +73,6 @@ jobs:
                 with:
                     cache: 'maven'
             -   name: Setup JFrog CLI
-                if: runner.os == 'Linux'
                 uses: jfrog/setup-jfrog-cli@v4
                 env:
                     JF_URL: ${{ secrets.FROGBOT_URL }}
@@ -82,25 +81,22 @@ jobs:
                 with:
                     disable-auto-build-publish: true
             -   name: Configure Maven repositories
-                if: runner.os == 'Linux'
+                shell: bash
                 run: |
                     jf mvn-config \
                       --repo-resolve-releases wbg-maven-remote \
                       --repo-resolve-snapshots wbg-maven-remote \
                       --repo-deploy-releases wbg-maven-local \
                       --repo-deploy-snapshots wbg-maven-local
-            -   name: Build with Maven
-                if: runner.os != 'Linux'
-                run: mvn --no-transfer-progress verify
             -   name: Build with Maven and collect build info
-                if: runner.os == 'Linux'
+                shell: bash
                 run: jf mvn --no-transfer-progress verify
             -   name: Publish build info
-                if: runner.os == 'Linux'
+                shell: bash
                 run: |
                     jf rt build-collect-env
                     jf rt build-add-git
                     jf rt build-publish
             -   name: Scan build info with Xray
-                if: runner.os == 'Linux'
+                shell: bash
                 run: jf build-scan
