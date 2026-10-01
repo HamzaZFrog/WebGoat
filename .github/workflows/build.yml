@@ -65,7 +65,7 @@ jobs:
                 os: [ windows-latest, ubuntu-latest, macos-15-intel ]
         env:
             JFROG_CLI_BUILD_NAME: webgoat
-            JFROG_CLI_BUILD_NUMBER: ${{ github.run_id }}.${{ github.run_attempt }}-${{ runner.os }}
+            JFROG_CLI_BUILD_NUMBER: ${{ github.run_id }}.${{ github.run_attempt }}-${{ matrix.os }}
         steps:
             -   uses: actions/checkout@v7
             -   name: Set up JDK
